@@ -11,7 +11,8 @@ var args = process.argv.slice(1);
 var options = {
     compress: false,
     optimization: 1,
-    silent: false
+    silent: false,
+    watch: false
 };
 
 args = args.filter(function (arg) {
@@ -31,6 +32,10 @@ args = args.filter(function (arg) {
         case 's':
         case 'silent':
             options.silent = true;
+            break;
+        case 'w':
+        case 'watch':
+            options.watch = true;
             break;
         case 'h':
         case 'help':
@@ -57,26 +62,22 @@ if (output && output[0] != '/') {
 
 var css, fd, tree;
 
-if (! input) {
-    sys.puts("lessc: no input files");
-    process.exit(1);
-}
+var compile = function(input, output, callback) {
+    fs.readFile(input, 'utf-8', function (e, data) {
+        if (e) {
+            callback && callback(e);
+            return;
+        }
 
-fs.readFile(input, 'utf-8', function (e, data) {
-    if (e) {
-        sys.puts("lessc: " + e.message);
-        process.exit(1);
-    }
-
-    new(less.Parser)({
-        paths: [path.dirname(input)],
-        optimization: options.optimization,
-        filename: input
-    }).parse(data, function (err, tree) {
-        if (err) {
-            less.writeError(err, options);
-            process.exit(1);
-        } else {
+        new(less.Parser)({
+            paths: [path.dirname(input)],
+            optimization: options.optimization,
+            filename: input
+        }).parse(data, function (err, tree) {
+            if (err) {
+                callback && callback(err);
+                return;
+            }
             try {
                 css = tree.toCSS({ compress: options.compress });
                 if (output) {
@@ -85,10 +86,99 @@ fs.readFile(input, 'utf-8', function (e, data) {
                 } else {
                     sys.print(css);
                 }
-            } catch (e) {
-                less.writeError(e, options);
-                process.exit(2);
+                callback && callback();
+            } catch (err) {
+                callback && callback(err);
             }
+        });
+    });
+};
+
+var changeExtension = function(f) {
+    return path.join(path.dirname(f), path.basename(f, '.less') + '.css');
+};
+
+if (options.watch) {
+    try {
+        var stat = fs.statSync(input);
+    } catch (e) {
+        sys.puts("[ERROR] " + e.message);
+        return;
+    }
+
+    if (!stat.isDirectory()) {
+        compile(input, changeExtension(input), function(err) {
+            if (err) {
+                console.log('* [ERROR] `' + input + '`: ' + err.message);
+            } else {
+                sys.puts('* Watching for changes in `' + input + '`');
+            }
+        });
+
+        fs.watchFile(input, function(curr, prev) {
+            if (curr.nlink === 0) {
+                sys.puts('* Removed `' + input + '`, exiting...');
+                process.exit(0);
+            } else {
+                compile(input, changeExtension(input), function(err) {
+                    if (err) {
+                        console.log('* [ERROR] `' + input + '`: ' + err.message);
+                    } else {
+                        sys.puts(': Change detected... * [Updated] `' + input + '`');
+                    }
+                });
+            }
+        });
+    } else {
+        try {
+            var watch = require('watch');
+        } catch (e) {
+            sys.puts("lessc: `watch` module required to watch directories");
+            process.exit(1);
+        }
+
+        watch.watchTree(input, function(f, curr, prev) {
+            if (typeof f === 'object' && curr === null && prev === null) {
+                for (var k in f) {
+                    if (path.extname(k) === '.less') {
+                        (function(k) {
+                            compile(k, changeExtension(k), function(err) {
+                                if (err) {
+                                    console.log('* [ERROR] `' + k + '`: ' + err.message);
+                                } else {
+                                    console.log('* Watching for changes in `' + k + '`...');
+                                }
+                            });
+                        })(k);
+                    }
+                }
+                return;
+            }
+
+            if (path.extname(f) !== '.less') {
+                return;
+            }
+
+            if (curr.nlink === 0) {
+                // file removed
+            } else {
+                // file changed or added
+                console.log(': Change detected... * [Updated] ' + f);
+                compile(f, path.join(path.dirname(f), path.basename(f, '.less') + '.css'));
+            }
+        });
+    }
+} else {
+
+    if (! input) {
+        sys.puts("lessc: no input files");
+        process.exit(1);
+    }
+
+    compile(input, output, function(err) {
+        if (err) {
+            less.writeError(err, options);
+            process.exit(1);
         }
     });
-});
+}
