@@ -1,4 +1,5 @@
 import Ruleset from './ruleset';
+import Declaration from './declaration';
 import Value from './value';
 import Selector from './selector';
 import AtRule from './atrule';
@@ -11,6 +12,9 @@ const Media = function(value, features, index, currentFileInfo, visibilityInfo) 
     const selectors = (new Selector([], null, null, this._index, this._fileInfo)).createEmptySelectors();
 
     this.features = new Value(features);
+    // const simple = Array.isArray(value) && value.every(r => r instanceof Declaration);
+    // this.rules = simple ? value : [new Ruleset(selectors, value)];
+    // if (!simple) { this.rules[0].allowImports = true; }
     this.rules = [new Ruleset(selectors, value)];
     this.rules[0].allowImports = true;
     this.copyVisibilityInfo(visibilityInfo);

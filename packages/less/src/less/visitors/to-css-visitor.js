@@ -229,7 +229,7 @@ ToCSSVisitor.prototype = {
 
         this.checkValidNodes(rulesetNode.rules, rulesetNode.firstRoot);
 
-        if (!rulesetNode.root) {
+        if (false&&!rulesetNode.root) {
             // remove invisible paths
             this._compileRulesetPaths(rulesetNode);
 
